@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Merger</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);}
+    .main-card { transition: all 0.3s ease-in-out; }
+    .main-card:hover { transform: scale(1.02); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);}
+    .file-input-label { transition: all 0.2s ease-in-out; }
+    .file-input-label:hover { border-color: #3b82f6; transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
+    .file-input-label.has-file { background-color:#10B981; color:white; border-color:#10B981;}
+    .loader { border-top-color:#3498db; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    #drag-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(255,255,255,0.8);
+      z-index:9999; display:none; justify-content:center; align-items:center; pointer-events:none; backdrop-filter:blur(5px);}
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+  <!-- Drag overlay -->
+  <div id="drag-overlay">
+    <div class="text-center text-gray-700 border-4 border-dashed border-gray-400 rounded-2xl p-12">
+      <svg class="w-16 h-16 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+      </svg>
+      <p class="mt-4 text-2xl font-bold">Drop your PDF anywhere</p>
+    </div>
+  </div>
+
+  <div class="main-card bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">PDF Merger</h1>
+      <p class="text-gray-500 mt-2">Combine two PDF files into one, securely in your browser.</p>
+    </div>
+
+    <!-- File inputs -->
+    <div class="space-y-6">
+      <div>
+        <label for="pdf1" class="text-sm font-medium text-gray-700 block mb-2">First PDF File</label>
+        <label for="pdf1" class="file-input-label flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50">
+          <svg class="w-6 h-6 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          <span id="pdf1-name" class="text-gray-500">Click to upload or drag & drop</span>
+        </label>
+        <input type="file" id="pdf1" class="hidden" accept=".pdf">
+      </div>
+
+      <div>
+        <label for="pdf2" class="text-sm font-medium text-gray-700 block mb-2">Second PDF File</label>
+        <label for="pdf2" class="file-input-label flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50">
+          <svg class="w-6 h-6 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          <span id="pdf2-name" class="text-gray-500">Click to upload or drag & drop</span>
+        </label>
+        <input type="file" id="pdf2" class="hidden" accept=".pdf">
+      </div>
+    </div>
+
+    <!-- Button -->
+    <div class="mt-8">
+      <button id="merge-button"
+        class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
+        disabled>
+        <span id="button-text">Select two files to merge</span>
+        <div id="loader" class="loader w-5 h-5 rounded-full border-2 border-white border-t-blue-500 ml-2 hidden"></div>
+      </button>
+    </div>
+
+    <div id="status" class="mt-6 text-center"></div>
+  </div>
+
+  <script>
+    const pdf1Input = document.getElementById('pdf1');
+    const pdf2Input = document.getElementById('pdf2');
+    const pdf1Name = document.getElementById('pdf1-name');
+    const pdf2Name = document.getElementById('pdf2-name');
+    const mergeButton = document.getElementById('merge-button');
+    const buttonText = document.getElementById('button-text');
+    const loader = document.getElementById('loader');
+    const statusDiv = document.getElementById('status');
+    const dragOverlay = document.getElementById('drag-overlay');
+    const { PDFDocument } = PDFLib;
+
+    const updateUI = () => {
+      const f1 = pdf1Input.files[0];
+      const f2 = pdf2Input.files[0];
+      if (f1) { pdf1Name.textContent = f1.name; pdf1Name.parentElement.classList.add('has-file'); }
+      if (f2) { pdf2Name.textContent = f2.name; pdf2Name.parentElement.classList.add('has-file'); }
+      mergeButton.disabled = !(f1 && f2);
+      buttonText.textContent = (f1 && f2) ? 'Merge PDFs' : 'Select two files to merge';
+    };
+
+    pdf1Input.addEventListener('change', updateUI);
+    pdf2Input.addEventListener('change', updateUI);
+
+    // Drag overlay
+    document.body.addEventListener('dragenter', e => { e.preventDefault(); dragOverlay.style.display = 'flex'; });
+    document.body.addEventListener('dragleave', e => { if (e.target === document.body) dragOverlay.style.display = 'none'; });
+    document.body.addEventListener('drop', () => { dragOverlay.style.display = 'none'; });
+
+    const setupDrop = (input) => {
+      const label = input.previousElementSibling;
+      label.addEventListener('drop', e => {
+        e.preventDefault();
+        if (e.dataTransfer.files.length > 0 && e.dataTransfer.files[0].type === 'application/pdf') {
+          input.files = e.dataTransfer.files;
+          updateUI();
+        }
+      });
+      label.addEventListener('dragover', e => e.preventDefault());
+    };
+    setupDrop(pdf1Input); setupDrop(pdf2Input);
+
+    const mergePdfs = async () => {
+      try {
+        mergeButton.disabled = true;
+        loader.classList.remove('hidden');
+        buttonText.textContent = 'Merging...';
+        statusDiv.innerHTML = '';
+
+        const pdf1Doc = await PDFDocument.load(await pdf1Input.files[0].arrayBuffer());
+        const pdf2Doc = await PDFDocument.load(await pdf2Input.files[0].arrayBuffer());
+        const mergedPdf = await PDFDocument.create();
+
+        (await mergedPdf.copyPages(pdf1Doc, pdf1Doc.getPageIndices())).forEach(p => mergedPdf.addPage(p));
+        (await mergedPdf.copyPages(pdf2Doc, pdf2Doc.getPageIndices())).forEach(p => mergedPdf.addPage(p));
+
+        const blob = new Blob([await mergedPdf.save()], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        statusDiv.innerHTML = `
+          <p class="text-green-600 font-semibold mb-2">PDFs merged successfully!</p>
+          <a href="${url}" download="merged-document.pdf"
+             class="inline-block bg-green-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-600 transition-all">
+             Download Merged PDF
+          </a>`;
+      } catch (err) {
+        statusDiv.innerHTML = `<p class="text-red-600 font-semibold">Error: ${err.message}</p>`;
+      } finally {
+        loader.classList.add('hidden');
+        buttonText.textContent = 'Merge PDFs';
+        mergeButton.disabled = false;
+      }
+    };
+
+    mergeButton.addEventListener('click', mergePdfs);
+  </script>
+</body>
+</html>
